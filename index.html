@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HandLab</title>
+    <link rel="stylesheet" href="src/styles.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+          "@mediapipe/tasks-vision": "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs"
+        }
+      }
+    </script>
+  </head>
+  <body class="no-camera">
+    <!-- layer 0: webcam background (or a dark grid when there is no camera) -->
+    <div id="bg-fallback"></div>
+    <video id="webcam" autoplay muted playsinline></video>
+
+    <!-- layer 1: hologram -->
+    <div id="stage"></div>
+
+    <!-- layer 2: hand skeleton + ring, labels with leader lines -->
+    <canvas id="hand-canvas"></canvas>
+    <div id="labels"><svg id="label-lines"></svg></div>
+
+    <!-- layer 3: UI -->
+    <header id="brand"><span class="logo">◉</span> HandLab <small data-i18n="tagline">form · explode · learn — with your hand</small></header>
+
+    <aside id="panel">
+      <span class="tag" id="cat-tag">VEHICLES</span>
+      <h1 id="model-name">—</h1>
+      <p id="model-specs" class="specs"></p>
+
+      <div class="kv"><span data-i18n="scene">SCENE</span><span class="pill" id="scene-state">FORMING</span></div>
+      <div class="kv"><span data-i18n="hand">HAND</span><span class="pill hand" id="hand-state" data-i18n="hand.NONE">— No hand</span></div>
+
+      <label class="block">
+        <span class="caption" data-i18n="sensitivity">GESTURE SENSITIVITY</span>
+        <select id="sensitivity">
+          <option value="strict" data-i18n="sens.strict">Strict</option>
+          <option value="standard" selected data-i18n="sens.standard">Standard</option>
+          <option value="forgiving" data-i18n="sens.forgiving">Forgiving</option>
+        </select>
+        <small data-i18n="sensitivityHint">More forgiving helps recognize less distinct hand poses</small>
+      </label>
+
+      <div class="block">
+        <div class="kv"><span class="caption" data-i18n="openness">HAND OPENNESS</span><b id="openness-val">—</b></div>
+        <div class="bar"><i id="openness-bar"></i></div>
+      </div>
+
+      <div class="block">
+        <div class="kv"><span class="caption" data-i18n="explode">EXPLODED VIEW</span><b id="explode-val">0%</b></div>
+        <input id="explode-slider" type="range" min="0" max="100" value="0" aria-label="Exploded view" />
+        <small data-i18n="explodeHint">Open your hand to pull it apart · close it to assemble</small>
+      </div>
+
+      <section id="part-card" hidden>
+        <button id="part-close" class="icon" aria-label="Close">×</button>
+        <span class="caption" data-i18n="selectedPart">SELECTED PART</span>
+        <h2 id="part-name"></h2>
+        <p id="part-info"></p>
+      </section>
+
+      <section class="block">
+        <span class="caption" data-i18n="gestures">GESTURES</span>
+        <ul id="gesture-list">
+          <li data-g="snap"><b>✨</b><span data-i18n-html="g.snap"><strong>Snap</strong> — summon particles / dissolve</span></li>
+          <li data-g="fist"><b>✊</b><span data-i18n-html="g.fist"><strong>Fist</strong> — put it together</span></li>
+          <li data-g="open"><b>✋</b><span data-i18n-html="g.open"><strong>Open slowly</strong> — explode it, see inside</span></li>
+          <li data-g="twist"><b>🤚</b><span data-i18n-html="g.twist"><strong>Twist / raise hand</strong> — rotate &amp; tilt it</span></li>
+          <li data-g="point"><b>☝️</b><span data-i18n-html="g.point"><strong>Point</strong> at a part to learn it · <strong>pinch</strong> 🤏 pulls it out</span></li>
+          <li data-g="zoom"><b>🙌</b><span data-i18n-html="g.zoom"><strong>Two hands</strong> apart / together — zoom</span></li>
+          <li data-g="peace"><b>✌️</b><span data-i18n-html="g.peace"><strong>Peace</strong> — jump to the next model</span></li>
+        </ul>
+      </section>
+    </aside>
+
+    <div id="hud-right">
+      <div id="toolbar">
+        <button data-act="lang" data-i18n-title="tb.lang" class="lang">UZ</button>
+        <button data-act="camera" data-i18n-title="tb.camera" class="on">📷</button>
+        <button data-act="labels" data-i18n-title="tb.labels" class="on">🏷️</button>
+        <button data-act="snap" data-i18n-title="tb.snap">✨</button>
+        <button data-act="reset" data-i18n-title="tb.reset">↺</button>
+        <button data-act="fullscreen" data-i18n-title="tb.fullscreen">⛶</button>
+        <button data-act="rotate" data-i18n-title="tb.rotate" class="on">⏯</button>
+      </div>
+      <div id="stats">—</div>
+    </div>
+
+    <nav id="bottom">
+      <div id="cat-tabs"></div>
+      <div id="model-chips"></div>
+    </nav>
+
+    <div id="toast" role="status"></div>
+    <div id="loading" hidden><div class="spinner"></div><span>Loading…</span></div>
+    <div id="error-banner" role="alert" hidden>
+      <div><strong class="error-title"></strong><p class="error-detail"></p></div>
+      <button id="error-close" class="icon" aria-label="Dismiss">×</button>
+    </div>
+
+    <noscript>HandLab needs JavaScript.</noscript>
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

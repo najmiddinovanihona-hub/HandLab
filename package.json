@@ -1,0 +1,10 @@
+{
+  "name": "handlab",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Touch-free 3D explorer controlled by hand gestures (Three.js + MediaPipe HandLandmarker)",
+  "type": "module",
+  "scripts": {
+    "start": "npx serve ."
+  }
+}
