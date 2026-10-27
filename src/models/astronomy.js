@@ -37,13 +37,14 @@ export const solarSystem = {
     ...PLANETS.map(([name, uzName, r, d, a, color, info, uzInfo], i) => ({
       name,
       color,
+      map: name === 'Earth' ? 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r160/examples/textures/planets/earth_atmos_2048.jpg' : undefined,
       spread: 0.5,
       edge: 8,
       uz: [uzName, uzInfo],
       info,
       build: () => {
         const p = [Math.cos(a) * d, 0, Math.sin(a) * d];
-        const planet = sphere(r, { p, ws: 20, hs: 14 });
+        const planet = sphere(r, { p, ws: 32, hs: 20, uv: name === 'Earth' });
         return i === 5 ? merge(planet, torus(r * 1.75, r * 0.32, { p, r: [PI / 2 - 0.45, 0, 0], s: [1, 1, 0.08], rs: 3, ts: 40 })) : planet;
       },
     })),

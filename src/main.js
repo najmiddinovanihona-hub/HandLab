@@ -8,6 +8,7 @@
 //   3. Render WebGL (transparent, over the webcam video), labels, hand overlay
 
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 
 import { CONFIG } from './config.js';
 import { startCamera } from './camera.js';
@@ -43,7 +44,7 @@ let catIndex = 0;
 let modelIndex = 0;
 const dying = []; // models dissolving away after a switch
 let labelsOn = true;
-let viewStyle = load('handlab.style', 'hologram');
+let viewStyle = load('handlab.style2', 'realistic'); // realistic by default
 let hacker = load('handlab.hacker', '0') === '1';
 let matrix = null;
 const HACKER_GREEN = 0x00ff66;
@@ -68,12 +69,17 @@ function setup3D() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.setClearColor(0x000000, 0); // transparent: the webcam shows through
+  // Photographic look for the realistic style: filmic tone mapping + studio reflections.
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.05;
   document.getElementById('stage').appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
+  const pmrem = new THREE.PMREMGenerator(renderer);
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
   // Lights only matter for the "realistic" style; the other styles use unlit materials.
-  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x20242e, 1.4));
-  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x20242e, 0.6));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.6);
   sun.position.set(4, 6, 8);
   scene.add(sun);
   camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.05, 200);
@@ -100,8 +106,9 @@ function setup3D() {
   const pt = (e) => ({ x: e.clientX, y: e.clientY });
   el.addEventListener('pointerdown', (e) => {
     el.setPointerCapture(e.pointerId);
-    controller.mouseDown(pt(e));
+    controller.mouseDown(pt(e), { move: e.button === 2 || e.shiftKey });
   });
+  el.addEventListener('contextmenu', (e) => e.preventDefault()); // right-drag = move
   el.addEventListener('pointermove', (e) => controller.mouseMove(pt(e)));
   el.addEventListener('pointerup', (e) => controller.mouseUp(pt(e)));
   el.addEventListener('pointerleave', () => controller.mouseLeave());
@@ -111,7 +118,27 @@ function setup3D() {
   }, { passive: false });
 }
 
-function showModel(ci, mi) {
+let loadToken = 0;
+
+async function showModel(ci, mi) {
+  const def = CATALOG[ci].models[mi];
+  const token = ++loadToken;
+  ui.setModel(ci, mi);
+  if (def.gltf) ui.setLoading(t('loading.model3d'));
+  let next;
+  try {
+    next = await HoloModel.create(def, { pixelRatio: renderer.getPixelRatio(), style: viewStyle, tint: hacker ? HACKER_GREEN : null });
+  } catch (err) {
+    console.error(err);
+    if (token === loadToken) {
+      ui.setLoading(null);
+      ui.toast(t('err.model3d'), 3500);
+      ui.setModel(catIndex, modelIndex);
+    }
+    return;
+  }
+  if (token !== loadToken) return next.dispose(); // another model was picked meanwhile
+  ui.setLoading(null);
   catIndex = ci;
   modelIndex = mi;
   if (model) {
@@ -120,12 +147,10 @@ function showModel(ci, mi) {
     model.hover(null);
     dying.push(model);
   }
-  const def = CATALOG[ci].models[mi];
-  model = new HoloModel(def, { pixelRatio: renderer.getPixelRatio(), style: viewStyle, tint: hacker ? HACKER_GREEN : null });
+  model = next;
   scene.add(model.root);
   controller.setModel(model);
   labels.setModel(model);
-  ui.setModel(ci, mi);
 }
 
 function stepModel(d) {
@@ -140,7 +165,7 @@ function stepModel(d) {
 function setViewStyle(style) {
   if (!STYLES.includes(style)) return;
   viewStyle = style;
-  save('handlab.style', style);
+  save('handlab.style2', style);
   model?.setStyle(style);
   ui.setStyle(style);
   ui.toast(`◆ ${t(`style.${style}`)}`);
@@ -351,6 +376,10 @@ function frame(now) {
 
   matrix.update(now);
   ui.setExplode(controller.current.explode);
+  if (!model) {
+    renderer.render(scene, camera);
+    return;
+  }
   ui.setSceneState(model.formState);
   labels.update(model, camera, {
     visible: labelsOn && model.form > 0.85 && controller.current.explode > 0.15,
@@ -391,8 +420,8 @@ function boot() {
   onLangChange(() => {
     ui.applyStatic();
     ui.setModel(catIndex, modelIndex, { keepPart: true });
-    if (model.selected) ui.showPart(model.selected);
-    labels.setModel(model);
+    if (model?.selected) ui.showPart(model.selected);
+    if (model) labels.setModel(model);
     ui.toast(t('toast.lang'));
   });
   ui.onExplode((v) => controller.setExplode(v));
@@ -410,7 +439,7 @@ function boot() {
   applySensitivity(saved);
   ui.setSensitivity(saved);
 
-  showModel(CATALOG.findIndex((c) => c.key === 'VEHICLES'), 0);
+  showModel(CATALOG.findIndex((c) => c.key === 'REAL3D'), 0);
   // Debug handle for the browser console (see README > Troubleshooting).
   window.handlab = { controller, stateMachine, tracker, renderer, CONFIG, showModel, get model() { return model; } };
   requestAnimationFrame(frame);

@@ -11,7 +11,7 @@ import { t, partText } from './i18n.js';
 
 const I = CONFIG.interaction;
 const S = CONFIG.smoothing;
-const DEFAULTS = Object.freeze({ yaw: -0.5, pitch: 0.18, zoom: 1, explode: 0 });
+const DEFAULTS = Object.freeze({ yaw: -0.5, pitch: 0.18, zoom: 1, explode: 0, px: 0, py: 0 });
 
 export class Controller {
   constructor({ camera, overlay, ui, onNext }) {
@@ -32,6 +32,7 @@ export class Controller {
     this.dwellState = { part: null, start: 0, fired: false };
     this.pull = null;
     this.drag = null;
+    this.lastPinch = null; // for pinch-on-empty-space rotation
     this.raycaster = new THREE.Raycaster();
     this.ndc = new THREE.Vector2();
   }
@@ -74,8 +75,10 @@ export class Controller {
     for (const ev of out.events) {
       if (ev.type === 'snap') this.toggleForm();
       else if (ev.type === 'next') this.onNext(+1);
-      else if (ev.type === 'pinchStart') this._startPull(now);
-      else if (ev.type === 'pinchEnd') this._endPull();
+      else if (ev.type === 'pinchStart') {
+        this.lastPinch = null;
+        this._startPull(now);
+      } else if (ev.type === 'pinchEnd') this._endPull();
     }
 
     this.yawVelocity = 0;
@@ -93,10 +96,12 @@ export class Controller {
         break;
       case MODES.FIST:
         this.target.explode = 0;
+        this._move(out.moveDelta);
         break;
       case MODES.ZOOMING:
         if (out.zoom.start) this.zoomAnchor = this.target.zoom;
         this.target.zoom = clamp(this.zoomAnchor * Math.pow(out.zoom.ratio, I.ZOOM_SENSITIVITY), I.ZOOM_MIN, I.ZOOM_MAX);
+        this._move(out.moveDelta);
         break;
       case MODES.POINTING:
         if (out.pointer) {
@@ -106,6 +111,14 @@ export class Controller {
         break;
       case MODES.PINCHING:
         if (out.pinch && this.pull) this._dragPull(this.overlay.toScreen(out.pinch));
+        else if (out.pinch) {
+          // Pinch on empty space = grab the model and turn it.
+          if (this.lastPinch) {
+            this.target.yaw += (out.pinch.x - this.lastPinch.x) * I.PINCH_ROTATE_GAIN;
+            this.target.pitch = clamp(this.target.pitch + (out.pinch.y - this.lastPinch.y) * I.PINCH_ROTATE_GAIN, -1.4, 1.4);
+          }
+          this.lastPinch = { ...out.pinch };
+        }
         break;
     }
 
@@ -114,6 +127,16 @@ export class Controller {
       this.handHovering = false;
       this.dwellState.part = null;
     }
+  }
+
+  /** Drag the whole model by a screen-space delta (fraction of the screen). */
+  _move(d) {
+    if (!d) return;
+    // Size of the visible area at the model's depth, so the model follows the hand.
+    const h = 2 * this.camera.position.z * Math.tan(THREE.MathUtils.degToRad(this.camera.fov / 2));
+    const w = h * this.camera.aspect;
+    this.target.px = clamp(this.target.px + d.dx * w * I.MOVE_GAIN, -w * 0.45, w * 0.45);
+    this.target.py = clamp(this.target.py - d.dy * h * I.MOVE_GAIN, -h * 0.45, h * 0.45);
   }
 
   _handHover(p, now) {
@@ -193,14 +216,20 @@ export class Controller {
   }
 
   // ---------------------------------------------------------------- mouse fallback
-  mouseDown(p) {
-    this.drag = { start: p, last: p, moved: false };
+  /** Left button = rotate, right button (or Shift) = move the model. */
+  mouseDown(p, { move = false } = {}) {
+    this.drag = { start: p, last: p, moved: false, move };
   }
   mouseMove(p) {
     if (this.drag) {
       if (Math.hypot(p.x - this.drag.start.x, p.y - this.drag.start.y) > 4) this.drag.moved = true;
-      this.target.yaw += (p.x - this.drag.last.x) * 0.008;
-      this.target.pitch = clamp(this.target.pitch + (p.y - this.drag.last.y) * 0.008, -1.4, 1.4);
+      const dx = p.x - this.drag.last.x;
+      const dy = p.y - this.drag.last.y;
+      if (this.drag.move) this._move({ dx: dx / window.innerWidth / I.MOVE_GAIN, dy: dy / window.innerHeight / I.MOVE_GAIN });
+      else {
+        this.target.yaw += dx * 0.008;
+        this.target.pitch = clamp(this.target.pitch + dy * 0.008, -1.4, 1.4);
+      }
       this.drag.last = p;
       return;
     }
@@ -231,9 +260,12 @@ export class Controller {
     c.pitch = damp(c.pitch, t.pitch, S.ROTATE, dt);
     c.zoom = damp(c.zoom, t.zoom, S.ZOOM, dt);
     c.explode = damp(c.explode, t.explode, S.EXPLODE, dt);
+    c.px = damp(c.px, t.px, S.ROTATE, dt);
+    c.py = damp(c.py, t.py, S.ROTATE, dt);
 
     // Euler XYZ = yaw about Y first, then pitch about the world X axis (orbit-like).
     m.root.rotation.set(c.pitch, c.yaw, 0);
+    m.root.position.set(c.px, c.py, 0);
     const e = c.explode * c.explode * (3 - 2 * c.explode);
     m.root.scale.setScalar(c.zoom * (1 - CONFIG.hologram.EXPLODE_ZOOM_OUT * e));
     m.setExplode(c.explode);

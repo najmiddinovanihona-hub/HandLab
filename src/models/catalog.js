@@ -12,8 +12,10 @@ import { carbonAtom, barMagnet, dcMotor, newtonsCradle, dynamometer } from './ph
 import { water, methane, benzene, saltCrystal, labGlassware } from './chemistry.js';
 import { solarSystem, telescope } from './astronomy.js';
 import { microscope, drawingTools } from './instruments.js';
+import { REAL_MODELS } from './realModels.js';
 
 export const CATALOG = [
+  { key: 'REAL3D', models: REAL_MODELS },
   { key: 'GEOMETRY', models: [...GEOMETRY_MODELS, drawingTools] },
   { key: 'PHYSICS', models: [carbonAtom, barMagnet, dcMotor, newtonsCradle, dynamometer] },
   { key: 'CHEMISTRY', models: [water, methane, benzene, saltCrystal, labGlassware] },

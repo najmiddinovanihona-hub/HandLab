@@ -26,12 +26,12 @@ or `https://`, never on `file://`. The first load downloads about 10 MB (WASM + 
 | Gesture | What it does | Rule (all distances ÷ palm length, so it works at any distance) |
 |---|---|---|
 | ✨ **Snap** | Summon the model from particles / dissolve it | thumb tip touches middle tip (index free) for ≥ 2 frames and ≤ 1.5 s, then they separate (> 0.6) within 400 ms |
-| ✊ **Fist** | Put it back together | 4 fingers curled, index tip buried in the palm (ratio < 0.8), thumb tucked |
+| ✊ **Fist** (+ move it) | Put it back together · **move the fist to drag the model around** | 4 fingers curled, index tip buried in the palm (ratio < 0.8), thumb tucked |
 | ✋ **Open slowly** | Explode it, see inside | hand openness (mean extension of 5 digits) mapped 0.3 → 0.85 onto explode 0 → 1. Explode only grows while open; a fist closes it |
 | 🤚 **Twist / raise hand** | Rotate and tilt | palm axis (wrist → middle knuckle) tilted > 15° spins the model, full speed at 55°. Hand height sets the tilt (±35°) |
 | ☝️ **Point** | Highlight a part; hold 0.5 s to show its info card | only the index finger extended. The fingertip is mapped through the same crop as the video, so you point where you see your finger |
-| 🤏 **Pinch** (after pointing) | Pull the part out of the model | thumb–index < 0.25 to start, > 0.40 to release. The part follows the pinch and comes toward you, and flies back on release |
-| 🙌 **Two hands** | Zoom | distance between palms relative to when the second hand appeared, ^1.3 |
+| 🤏 **Pinch** | On a part you pointed at: pull it out · **on empty space: grab and rotate the model** | thumb–index < 0.25 to start, > 0.40 to release. The part follows the pinch and comes toward you, and flies back on release |
+| 🙌 **Two hands** | Zoom (apart / together) · **move both to drag the model** | distance between palms relative to when the second hand appeared, ^1.3 |
 | ✌️ **Peace** | Next model | index + middle extended, ring + pinky folded. Edge-triggered, 1.5 s cooldown |
 
 **Finger extended:** `|wrist→tip| / |wrist→PIP| > 1.12` and PIP joint straighter than 140°. **Curled:** that ratio is below 1.0.
@@ -40,13 +40,14 @@ hand already explodes fully. Moving the open hand 2 % of the screen sideways tur
 hand starts it spinning. The **Gesture sensitivity** dropdown (Ultra / Strict / Standard / Forgiving) changes the
 thresholds and the frame count in one go.
 
-Mouse / keyboard fallback: drag = rotate, wheel = zoom, click = select, slider = explode. Keys: `←/→` model, `S` snap,
+Mouse / keyboard fallback: drag = rotate, right-drag or Shift+drag = move, wheel = zoom, click = select, slider = explode. Keys: `←/→` model, `S` snap,
 `E` explode, `R` reset, `L` labels, `A` auto-rotate, `V` camera background, `1–4` view style, `H` hacker theme, `Esc` deselect.
 
-## Subjects (10 categories, 39 models)
+## Subjects (11 categories, 46 models)
 
 | Subject | Models (🔧 = instrument used in that subject) |
 |---|---|
+| REAL 3D | Ferrari 458 Italia, Two-cylinder engine (67 parts), Gearbox (95 parts), Off-road buggy (190 parts), Antique camera, Street lantern, Sci-fi helmet — detailed textured models |
 | GEOMETRY | Cube, Tetrahedron, Octahedron, Dodecahedron, Icosahedron, Square Pyramid, Triangular & Hexagonal Prism, Cylinder, Cone, Sphere, Torus, 🔧 Drawing tools (ruler, compass, protractor, set square, pencil) |
 | PHYSICS | Carbon atom (spinning electron shells), Bar magnet & field lines, DC electric motor (spinning rotor), Newton’s cradle, 🔧 Dynamometer |
 | CHEMISTRY | Water H₂O, Methane CH₄, Benzene C₆H₆, Salt crystal NaCl, 🔧 Lab glassware (flask, beaker, test tubes, Bunsen burner, graduated cylinder) |
@@ -61,13 +62,24 @@ Mouse / keyboard fallback: drag = rotate, wheel = zoom, click = select, slider =
 Each part has a name, colour and one-line fact. Polyhedra are split automatically into **faces**, **edges** and
 **vertices** (counted from the geometry, so V − E + F = 2 always matches), and they explode as three layers.
 
+## Real 3D models and realistic rendering
+
+The **REAL 3D** category loads detailed, textured GLB / glTF models at runtime. Every mesh becomes its own piece
+(so a 190-part buggy explodes into 190 pieces), and meshes are grouped into named parts by their names
+(Ferrari: body, glass, wheels, brakes, interior…). In the realistic style they keep their original PBR materials
+and textures. Wireframe edges are only computed when you switch to a style that draws them, so loading stays fast.
+
+**Realistic** is the default view style. It uses filmic (ACES) tone mapping, studio reflections (`RoomEnvironment`) and
+physically based materials. Procedural models get natural materials by part type: chrome, steel, car paint with
+clear-coat, rubber, glass with transmission, stone and wet organic tissue. The Earth uses a real satellite texture.
+
 ## View styles (panel → "View style", keys 1–4)
 
 | Style | Look |
 |---|---|
-| **Dotted** (Nuqtali, default) | Glowing edges + surface particles — the hologram |
+| **Dotted** (Nuqtali) | Glowing edges + surface particles — the hologram |
 | **X-ray** (Rentgen) | See-through bluish shells that glow where surfaces turn away (fresnel), like a radiograph |
-| **Realistic** (Realistik) | Opaque lit materials (metal / plastic) |
+| **Realistic** (Realistik, default) | Photographic: PBR materials, reflections, real textures |
 | **Fantasy** (Fantastik) | Rainbow colours shifting over time, drifting particles |
 
 Whatever the style, particles still carry the snap / form / dissolve animation.
@@ -165,3 +177,13 @@ Live values are in the browser console: `handlab.model`, `handlab.controller.tar
 3. **Multi-user**: sync the controller targets over WebRTC so a teacher's hand drives every student's screen.
 4. **glTF models**: load real models whose named meshes become parts automatically.
 5. **Quiz mode**: "Point at the mitochondria" with a score and a timer.
+
+## Credits
+
+Real 3D models are downloaded at runtime from public sample repositories and keep their own licences (some are
+CC-BY, some CC-BY-NC — check each one before any commercial use):
+
+- Ferrari 458 Italia — three.js examples (`examples/models/gltf/ferrari.glb`)
+- 2CylinderEngine, GearboxAssy, Buggy, AntiqueCamera, Lantern, DamagedHelmet — Khronos Group
+  [glTF-Sample-Models](https://github.com/KhronosGroup/glTF-Sample-Models), each folder has its README with the licence
+- Earth texture — three.js examples (`textures/planets/earth_atmos_2048.jpg`)

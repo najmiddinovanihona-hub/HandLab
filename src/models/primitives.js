@@ -31,10 +31,13 @@ export const C = {
   white: 0xe8f4ff,
 };
 
-export function prim(geo, { p = [0, 0, 0], r = [0, 0, 0], s = 1 } = {}) {
+export function prim(geo, { p = [0, 0, 0], r = [0, 0, 0], s = 1, uv = false } = {}) {
   const g = geo.index ? geo.toNonIndexed() : geo;
   if (g !== geo) geo.dispose();
-  for (const name of Object.keys(g.attributes)) if (name !== 'position' && name !== 'normal') g.deleteAttribute(name);
+  // Only position + normal by default so any primitives can be merged; `uv: true` keeps
+  // texture coordinates for a part that has a texture map (and is not merged).
+  const keep = uv ? ['position', 'normal', 'uv'] : ['position', 'normal'];
+  for (const name of Object.keys(g.attributes)) if (!keep.includes(name)) g.deleteAttribute(name);
   if (!g.attributes.normal) g.computeVertexNormals();
   g.clearGroups();
   const sc = Array.isArray(s) ? s : [s, s, s];

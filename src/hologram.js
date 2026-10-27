@@ -13,6 +13,8 @@ import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
 import { CONFIG } from './config.js';
 import { damp } from './filters.js';
 import { rng } from './models/primitives.js';
+import { realisticMaterial } from './materials.js';
+import { loadGltfParts } from './gltfParts.js';
 
 export const STYLES = ['hologram', 'xray', 'realistic', 'fantasy'];
 
@@ -106,7 +108,13 @@ const _p = new THREE.Vector3();
 const _c = new THREE.Color();
 
 export class HoloModel {
-  constructor(def, { pixelRatio = 1, style = 'hologram', tint = null } = {}) {
+  /** Async factory: real (glTF) models are downloaded first, procedural ones build at once. */
+  static async create(def, opts = {}) {
+    const raw = def.gltf ? await loadGltfParts(def) : null;
+    return new HoloModel(def, { ...opts, raw });
+  }
+
+  constructor(def, { pixelRatio = 1, style = 'hologram', tint = null, raw = null } = {}) {
     this.def = def;
     this.root = new THREE.Group(); // rotated / scaled by the controller
     this.content = new THREE.Group(); // normalizes the model's own units and centre
@@ -131,15 +139,17 @@ export class HoloModel {
     this.pickables = [];
     this.particleCount = 0;
     this.tint = null;
-    this._build();
+    this._build(raw);
     this.setTint(tint);
     this.setStyle(style);
   }
 
-  _build() {
+  _build(rawIn) {
     const H = CONFIG.hologram;
-    const raw = [];
-    for (const def of this.def.parts) for (const g of [].concat(def.build())) raw.push({ def, g });
+    // raw = [{ def: part definition, g: geometry, material?: original glTF material }]
+    const raw = rawIn ?? [];
+    if (!rawIn) for (const def of this.def.parts) for (const g of [].concat(def.build())) raw.push({ def, g });
+    const minPoints = rawIn ? 24 : H.MIN_POINTS_PER_INSTANCE; // glTF models can have 100+ meshes
 
     const bbox = new THREE.Box3();
     for (const r of raw) {
@@ -183,10 +193,12 @@ export class HoloModel {
       const fill = new THREE.Mesh(r.g, part.mats.fill);
       fill.userData.part = part;
       this.pickables.push(fill);
-      const lines = new THREE.LineSegments(new THREE.EdgesGeometry(r.g, r.def.edge ?? 20), part.mats.lines);
-      const n = Math.max(H.MIN_POINTS_PER_INSTANCE, Math.round((H.PARTICLES_PER_MODEL * r.area) / totalArea));
+      const n = Math.max(minPoints, Math.round((H.PARTICLES_PER_MODEL * r.area) / totalArea));
       const points = this._makePoints(r.sampler, n, c, center, radius, part, random);
-      group.add(fill, lines, points);
+      group.add(fill, points);
+      // Edges are expensive on big real models (100k+ triangles), so they are built lazily
+      // the first time a style that draws them is selected (see _ensureLines).
+      const lines = null;
       this.particleCount += n;
 
       // Explode offset: radially away from the model centre, scaled by distance, plus an
@@ -197,13 +209,15 @@ export class HoloModel {
       const offset =
         len > 1e-4 ? dir.multiplyScalar(((len * H.EXPLODE_GAIN + radius * H.EXPLODE_BASE) * spread) / len) : new THREE.Vector3();
       if (r.def.ex) offset.add(new THREE.Vector3(...r.def.ex).multiplyScalar(radius * 0.5));
-      part.instances.push({ group, base: c, offset, fill, lines, points });
+      // Real models keep their own textured PBR material for the realistic style.
+      const realMat = r.material ? cloneRealMaterial(r.material) : null;
+      part.instances.push({ group, base: c, offset, fill, lines, points, realMat });
     }
   }
 
   _makePart(def, index) {
     const color = new THREE.Color(def.color);
-    const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+    const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, toneMapped: false };
     const shell = (mode) =>
       new THREE.ShaderMaterial({
         ...additive,
@@ -221,13 +235,7 @@ export class HoloModel {
     const fills = {
       hologram: new THREE.MeshBasicMaterial({ ...additive, color: color.clone(), opacity: 0.05, side: THREE.DoubleSide }),
       xray: shell(0),
-      realistic: new THREE.MeshStandardMaterial({
-        color: color.clone(),
-        metalness: def.metal ?? 0.35,
-        roughness: def.rough ?? 0.45,
-        side: THREE.DoubleSide,
-        transparent: true,
-      }),
+      realistic: realisticMaterial(def, this.def),
       fantasy: shell(1),
     };
     const mats = {
@@ -290,11 +298,22 @@ export class HoloModel {
   }
 
   // ---------------------------------------------------------------- appearance
+  _ensureLines() {
+    for (const part of this.parts) {
+      for (const inst of part.instances) {
+        if (inst.lines) continue;
+        inst.lines = new THREE.LineSegments(new THREE.EdgesGeometry(inst.fill.geometry, part.def.edge ?? 20), part.mats.lines);
+        inst.group.add(inst.lines);
+      }
+    }
+  }
+
   setStyle(style) {
     this.style = STYLES.includes(style) ? style : 'hologram';
+    if (this.style !== 'realistic') this._ensureLines();
     for (const part of this.parts) {
       part.mats.fill = part.mats.fills[this.style];
-      for (const inst of part.instances) inst.fill.material = part.mats.fill;
+      for (const inst of part.instances) inst.fill.material = this.style === 'realistic' && inst.realMat ? inst.realMat : part.mats.fill;
     }
     this.uniforms.uDrift.value = this.style === 'fantasy' ? 2.5 : 0;
     this.uniforms.uSize.value = CONFIG.hologram.POINT_SIZE * (this.style === 'fantasy' ? 1.5 : 1);
@@ -390,10 +409,19 @@ export class HoloModel {
         m.fill.uniforms.uOpacity.value = (hot ? 1.6 : 1) * solid * dim;
       } else if (style === 'realistic') {
         m.lines.opacity = 0;
-        m.fill.color.copy(_c);
-        m.fill.emissive.copy(_c).multiplyScalar(hot ? 0.45 : 0);
-        m.fill.opacity = solid * (focus && !hot ? 0.3 : 1);
-        m.fill.depthWrite = m.fill.opacity > 0.95;
+        // Natural material colours; only the hacker tint recolours them.
+        const opacity = solid * (focus && !hot ? 0.3 : 1);
+        const mats = [m.fill, ...part.instances.map((i) => i.realMat).filter(Boolean).flat()];
+        for (const mat of new Set(mats)) {
+          if (mat === m.fill && mat.userData.baseColor) mat.color.copy(this.tint ? _c : mat.userData.baseColor);
+          if (mat.emissive && mat.userData.kind !== 'glow') {
+            if (hot) mat.emissive.copy(_c).multiplyScalar(0.35);
+            else if (mat.userData.baseEmissive) mat.emissive.copy(mat.userData.baseEmissive);
+            else mat.emissive.setRGB(0, 0, 0);
+          }
+          mat.opacity = opacity;
+          mat.depthWrite = opacity > 0.95;
+        }
       } else {
         m.lines.opacity = 0.9 * part.emph * solid;
         m.lines.color.copy(_c).lerp(WHITE, hot ? 0.5 : 0.1);
@@ -404,7 +432,7 @@ export class HoloModel {
       part.pull.y = damp(part.pull.y, part.pullTarget.y, CONFIG.smoothing.PULL, dt);
       part.pull.z = damp(part.pull.z, part.pullTarget.z, CONFIG.smoothing.PULL, dt);
       for (const inst of part.instances) {
-        inst.lines.visible = m.lines.opacity > 0.001;
+        if (inst.lines) inst.lines.visible = m.lines.opacity > 0.001;
         inst.points.visible = m.points.uniforms.uOpacity.value > 0.001;
         inst.group.position.copy(inst.base).addScaledVector(inst.offset, e).add(part.pull);
         // Spinning parts (electrons, rotors) turn around their own centre.
@@ -423,9 +451,23 @@ export class HoloModel {
       Object.values(part.mats.fills).forEach((m) => mats.add(m));
       mats.add(part.mats.lines);
       mats.add(part.mats.points);
+      // Cloned glTF materials are freed; their textures stay cached for the next visit.
+      for (const inst of part.instances) [].concat(inst.realMat ?? []).forEach((m) => mats.add(m));
     }
     geos.forEach((g) => g.dispose());
     mats.forEach((m) => m.dispose());
     this.root.removeFromParent();
   }
+}
+
+/** Per-instance copy of an original glTF material (textures stay shared). */
+function cloneRealMaterial(material) {
+  const clone = (m) => {
+    const c = m.clone();
+    c.transparent = true;
+    c.side = THREE.DoubleSide;
+    if (c.emissive) c.userData.baseEmissive = c.emissive.clone();
+    return c;
+  };
+  return Array.isArray(material) ? material.map(clone) : clone(material);
 }

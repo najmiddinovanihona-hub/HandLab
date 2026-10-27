@@ -121,6 +121,11 @@ export const CONFIG = {
     ZOOM_MIN: 0.4,
     ZOOM_MAX: 3.0,
 
+    // Fist (or both hands) moved across the screen drags the model. 1 = follows the hand 1:1.
+    MOVE_GAIN: 1.4,
+    // Pinch on empty space + move = grab and turn: radians per screen-width of travel.
+    PINCH_ROTATE_GAIN: 9,
+
     DWELL_MS: 350, // point at a part this long to open its info card
     PULL_HOVER_MEMORY_MS: 700, // pinch grabs the part pointed at within this time
     PULL_FORWARD: 0.8, // a pulled part also comes this far toward the camera (world units)

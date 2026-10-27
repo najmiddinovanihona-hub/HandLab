@@ -46,11 +46,13 @@ export class InteractionStateMachine {
     this.lastPointer = null;
     this.lastPinch = null;
     this.lastPalm = null;
+    this.lastDrag = null;
   }
 
   _enter(mode, out) {
     if (mode === this.mode) return;
     this.lastPalm = null;
+    this.lastDrag = null;
     if (this.mode === MODES.PINCHING) out.events.push({ type: 'pinchEnd' });
     if (mode === MODES.PINCHING) out.events.push({ type: 'pinchStart' });
     out.events.push({ type: 'mode', from: this.mode, to: mode });
@@ -71,6 +73,7 @@ export class InteractionStateMachine {
       explodeTarget: null, // 0..1, only while MOVING
       yawVelocity: 0, // rad/s from twisting the hand
       yawDelta: 0, // rad from moving the open hand sideways
+      moveDelta: null, // { dx, dy } screen units: fist or two-hand drag of the whole model
       pitchTarget: null, // rad from hand height
       zoom: null, // { start, ratio }
       pointer: null, // index tip, screen units (mirrored video coords)
@@ -107,6 +110,9 @@ export class InteractionStateMachine {
       } else {
         out.zoom = { start: false, ratio: d / this.zoomStart };
       }
+      // Both hands moving together drag the model (midpoint travel).
+      const mid = { x: (a.keypoints.palm.x + b.keypoints.palm.x) / 2, y: (a.keypoints.palm.y + b.keypoints.palm.y) / 2 };
+      out.moveDelta = this._dragDelta(mid);
       out.activeGesture = snapped ? 'snap' : 'zoom';
       this.lastDefinite = now;
       return finish();
@@ -120,6 +126,7 @@ export class InteractionStateMachine {
     switch (hand.gesture) {
       case G.FIST:
         this._enter(MODES.FIST, out);
+        out.moveDelta = this._dragDelta(hand.keypoints.palm); // grab and move
         out.activeGesture = 'fist';
         this.lastDefinite = now;
         break;
@@ -188,6 +195,15 @@ export class InteractionStateMachine {
     }
     if (snapped) out.activeGesture = 'snap';
     return finish();
+  }
+
+  /** Screen travel since the previous frame of the same drag (clamped against jumps). */
+  _dragDelta(p) {
+    const last = this.lastDrag;
+    this.lastDrag = { x: p.x, y: p.y };
+    if (!last) return null;
+    const m = C.MOVE_MAX_STEP;
+    return { dx: clamp(p.x - last.x, -m, m), dy: clamp(p.y - last.y, -m, m) };
   }
 
   _pickHand(hands) {
