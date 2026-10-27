@@ -35,27 +35,47 @@ or `https://`, never on `file://`. The first load downloads about 10 MB (WASM + 
 | ✌️ **Peace** | Next model | index + middle extended, ring + pinky folded. Edge-triggered, 1.5 s cooldown |
 
 **Finger extended:** `|wrist→tip| / |wrist→PIP| > 1.12` and PIP joint straighter than 140°. **Curled:** that ratio is below 1.0.
-A gesture must win **5 detection frames in a row** before it counts. The **Gesture sensitivity** dropdown (Strict / Standard /
-Forgiving) changes these thresholds and the frame count in one go.
+The default **Ultra sensitive** preset needs very little movement. A gesture counts after **2 frames**. A half-open
+hand already explodes fully. Moving the open hand 2 % of the screen sideways turns the model ~10°. A 7° tilt of the
+hand starts it spinning. The **Gesture sensitivity** dropdown (Ultra / Strict / Standard / Forgiving) changes the
+thresholds and the frame count in one go.
 
 Mouse / keyboard fallback: drag = rotate, wheel = zoom, click = select, slider = explode. Keys: `←/→` model, `S` snap,
-`E` explode, `R` reset, `L` labels, `A` auto-rotate, `V` camera background, `Esc` deselect.
+`E` explode, `R` reset, `L` labels, `A` auto-rotate, `V` camera background, `1–4` view style, `H` hacker theme, `Esc` deselect.
 
-## Models (8 categories, 25 models)
+## Subjects (10 categories, 39 models)
 
-| Category | Models |
+| Subject | Models (🔧 = instrument used in that subject) |
 |---|---|
-| GEOMETRY | Cube, Tetrahedron, Octahedron, Dodecahedron, Icosahedron, Square Pyramid, Triangular Prism, Hexagonal Prism, Cylinder, Cone, Sphere, Torus |
-| WONDERS | Great Pyramid of Giza (chambers & passages), Eiffel Tower |
-| ANATOMY | Human Eye, Lungs & Ribcage |
-| BIOLOGY | Animal Cell, DNA Double Helix |
-| SPACE | Earth Interior, Saturn V |
-| ENGINES | Inline-4 Engine, Turbofan Jet Engine |
-| VEHICLES | Sports Car, Airliner |
-| MACHINES | Quadcopter Drone |
+| GEOMETRY | Cube, Tetrahedron, Octahedron, Dodecahedron, Icosahedron, Square Pyramid, Triangular & Hexagonal Prism, Cylinder, Cone, Sphere, Torus, 🔧 Drawing tools (ruler, compass, protractor, set square, pencil) |
+| PHYSICS | Carbon atom (spinning electron shells), Bar magnet & field lines, DC electric motor (spinning rotor), Newton’s cradle, 🔧 Dynamometer |
+| CHEMISTRY | Water H₂O, Methane CH₄, Benzene C₆H₆, Salt crystal NaCl, 🔧 Lab glassware (flask, beaker, test tubes, Bunsen burner, graduated cylinder) |
+| BIOLOGY | Animal cell, DNA double helix, 🔧 Light microscope |
+| ANATOMY | Human eye, Lungs & ribcage |
+| ASTRONOMY | Solar system (Sun + 8 planets), Earth interior, Saturn V, 🔧 Refracting telescope |
+| WONDERS | Great Pyramid of Giza, Eiffel Tower |
+| ENGINES | Inline-4 engine, Turbofan |
+| VEHICLES | Sports car, Airliner |
+| MACHINES | Quadcopter drone |
 
 Each part has a name, colour and one-line fact. Polyhedra are split automatically into **faces**, **edges** and
 **vertices** (counted from the geometry, so V − E + F = 2 always matches), and they explode as three layers.
+
+## View styles (panel → "View style", keys 1–4)
+
+| Style | Look |
+|---|---|
+| **Dotted** (Nuqtali, default) | Glowing edges + surface particles — the hologram |
+| **X-ray** (Rentgen) | See-through bluish shells that glow where surfaces turn away (fresnel), like a radiograph |
+| **Realistic** (Realistik) | Opaque lit materials (metal / plastic) |
+| **Fantasy** (Fantastik) | Rainbow colours shifting over time, drifting particles |
+
+Whatever the style, particles still carry the snap / form / dissolve animation.
+
+## Hacker theme (toolbar `>_` or key `H`)
+
+Green-on-black terminal look: monospace font, CRT scanlines, Matrix digital rain over a green-tinted camera image, and
+every model drawn in shades of green. It can be combined with any view style.
 
 ## Language: O‘zbekcha / English
 

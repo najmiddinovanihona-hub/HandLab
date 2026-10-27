@@ -88,6 +88,7 @@ export class Controller {
         // it unfold gradually. A fist (below) is what puts it back together.
         if (out.explodeTarget !== null) this.target.explode = Math.max(this.target.explode, out.explodeTarget);
         this.yawVelocity = out.yawVelocity;
+        this.target.yaw += out.yawDelta;
         if (out.pitchTarget !== null) this.target.pitch = out.pitchTarget;
         break;
       case MODES.FIST:

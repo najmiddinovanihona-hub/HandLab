@@ -16,7 +16,8 @@ import { LandmarkFilter, StableValue, EMA } from './filters.js';
 import { analyzeHand, mirrorLandmarks, SnapDetector, GESTURES } from './gestures.js';
 import { InteractionStateMachine, MODES } from './stateMachine.js';
 import { Controller } from './controller.js';
-import { HoloModel } from './hologram.js';
+import { HoloModel, STYLES } from './hologram.js';
+import { MatrixRain } from './matrix.js';
 import { LabelLayer } from './labels.js';
 import { HandOverlay } from './handOverlay.js';
 import { UI } from './ui.js';
@@ -42,6 +43,25 @@ let catIndex = 0;
 let modelIndex = 0;
 const dying = []; // models dissolving away after a switch
 let labelsOn = true;
+let viewStyle = load('handlab.style', 'hologram');
+let hacker = load('handlab.hacker', '0') === '1';
+let matrix = null;
+const HACKER_GREEN = 0x00ff66;
+
+function load(key, fallback) {
+  try {
+    return localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+function save(key, value) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    /* storage unavailable: setting just won't persist */
+  }
+}
 
 function setup3D() {
   renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -51,6 +71,11 @@ function setup3D() {
   document.getElementById('stage').appendChild(renderer.domElement);
 
   scene = new THREE.Scene();
+  // Lights only matter for the "realistic" style; the other styles use unlit materials.
+  scene.add(new THREE.HemisphereLight(0xdfe9ff, 0x20242e, 1.4));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+  sun.position.set(4, 6, 8);
+  scene.add(sun);
   camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.05, 200);
   camera.position.set(0, 0, 7.2);
 
@@ -96,7 +121,7 @@ function showModel(ci, mi) {
     dying.push(model);
   }
   const def = CATALOG[ci].models[mi];
-  model = new HoloModel(def, { pixelRatio: renderer.getPixelRatio() });
+  model = new HoloModel(def, { pixelRatio: renderer.getPixelRatio(), style: viewStyle, tint: hacker ? HACKER_GREEN : null });
   scene.add(model.root);
   controller.setModel(model);
   labels.setModel(model);
@@ -111,6 +136,25 @@ function stepModel(d) {
   ui.toast(`✌️ ${modelText(next.model).name}`);
 }
 
+// ---------------------------------------------------------------- view style + theme
+function setViewStyle(style) {
+  if (!STYLES.includes(style)) return;
+  viewStyle = style;
+  save('handlab.style', style);
+  model?.setStyle(style);
+  ui.setStyle(style);
+  ui.toast(`◆ ${t(`style.${style}`)}`);
+}
+
+function setHacker(on) {
+  hacker = on;
+  save('handlab.hacker', on ? '1' : '0');
+  document.body.classList.toggle('theme-hacker', on);
+  matrix?.setEnabled(on);
+  model?.setTint(on ? HACKER_GREEN : null);
+  ui.setToolbarState('theme', on);
+}
+
 // ---------------------------------------------------------------- sensitivity
 function applySensitivity(name) {
   const preset = CONFIG.sensitivity[name] || CONFIG.sensitivity.standard;
@@ -118,7 +162,7 @@ function applySensitivity(name) {
   Object.assign(CONFIG.gestures, preset.gestures);
   for (const slot of handSlots.values()) slot.stable.frames = CONFIG.gestures.STABLE_FRAMES;
   try {
-    localStorage.setItem('handlab.sensitivity', name);
+    localStorage.setItem('handlab.sensitivity2', name);
   } catch {
     /* storage unavailable: setting just won't persist */
   }
@@ -220,6 +264,10 @@ function act(action) {
     case 'lang':
       setLang(getLang() === 'uz' ? 'en' : 'uz');
       break;
+    case 'theme':
+      setHacker(!hacker);
+      ui.toast(t(hacker ? 'toast.hackerOn' : 'toast.hackerOff'));
+      break;
     case 'camera': {
       const hidden = document.body.classList.toggle('hide-video');
       ui.setToolbarState('camera', !hidden);
@@ -259,6 +307,8 @@ function setupKeyboard() {
     else if (k === 'a') act('rotate');
     else if (k === 'v') act('camera');
     else if (k === 'e') controller.setExplode(controller.target.explode > 0.5 ? 0 : 1);
+    else if (k === 'h') act('theme');
+    else if (['1', '2', '3', '4'].includes(e.key)) setViewStyle(STYLES[Number(e.key) - 1]);
     else if (e.key === 'Escape') controller.select(null);
   });
 }
@@ -299,6 +349,7 @@ function frame(now) {
     }
   }
 
+  matrix.update(now);
   ui.setExplode(controller.current.explode);
   ui.setSceneState(model.formState);
   labels.update(model, camera, {
@@ -347,15 +398,15 @@ function boot() {
   ui.onExplode((v) => controller.setExplode(v));
   ui.onSensitivity(applySensitivity);
   ui.onToolbar(act);
+  ui.onStyle(setViewStyle);
+  ui.setStyle(viewStyle);
+  matrix = new MatrixRain(document.getElementById('matrix'));
+  setHacker(hacker);
   ui.onPartClose = () => controller.select(null);
   setupKeyboard();
 
-  let saved = 'standard';
-  try {
-    saved = localStorage.getItem('handlab.sensitivity') || 'standard';
-  } catch {
-    /* ignore */
-  }
+  // New storage key so everyone starts on the new, very sensitive default.
+  const saved = load('handlab.sensitivity2', 'ultra');
   applySensitivity(saved);
   ui.setSensitivity(saved);
 

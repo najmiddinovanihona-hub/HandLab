@@ -1,9 +1,12 @@
-// HoloModel: turns a model definition (named parts made of primitives) into a hologram:
-//   - additive glowing edges (EdgesGeometry) per part
-//   - a faint additive fill (also the raycast target for pointing)
-//   - surface particles that fly in from a scattered cloud to "form" the model (custom shader)
-// Each part may have several instances (e.g. 4 wheels); every instance explodes outward
-// from the model centre on its own, so "Wheels" fly to the four corners.
+// HoloModel: turns a model definition (named parts made of primitives) into a 3D model that
+// can be drawn in four styles:
+//   hologram  - "Nuqtali": glowing edges + faint fill + surface particles (default)
+//   xray      - "Rentgen": see-through bluish shells, bright where surfaces turn away (fresnel)
+//   realistic - "Realistik": opaque lit materials (metal / plastic), no particles
+//   fantasy   - "Fantastik": rainbow-shifting glow, colour-cycling particles and edges
+// Particles always carry the form / dissolve animation ("snap"), whatever the style.
+// Each part may have several instances (e.g. 4 wheels); every instance explodes outward from
+// the model centre on its own, so "Wheels" fly to the four corners.
 
 import * as THREE from 'three';
 import { MeshSurfaceSampler } from 'three/addons/math/MeshSurfaceSampler.js';
@@ -11,7 +14,9 @@ import { CONFIG } from './config.js';
 import { damp } from './filters.js';
 import { rng } from './models/primitives.js';
 
-const VERT = /* glsl */ `
+export const STYLES = ['hologram', 'xray', 'realistic', 'fantasy'];
+
+const POINT_VERT = /* glsl */ `
   attribute vec3 aScatter;
   attribute float aDelay;
   attribute float aSize;
@@ -20,13 +25,14 @@ const VERT = /* glsl */ `
   uniform float uPixelRatio;
   uniform float uSize;
   uniform float uJitter;
+  uniform float uDrift;
   varying float vAlpha;
   void main() {
     // Each particle starts flying at its own delay, so the model assembles in a wave.
     float t = smoothstep(aDelay, aDelay + 0.5, uForm);
     vec3 p = mix(aScatter, position, t);
     float w = aDelay * 50.0;
-    p += uJitter * (1.0 + 5.0 * (1.0 - t)) * vec3(sin(uTime * 1.7 + w), cos(uTime * 1.3 + w * 1.3), sin(uTime * 2.1 + w * 0.7));
+    p += uJitter * (1.0 + 5.0 * (1.0 - t) + uDrift) * vec3(sin(uTime * 1.7 + w), cos(uTime * 1.3 + w * 1.3), sin(uTime * 2.1 + w * 0.7));
     vec4 mv = modelViewMatrix * vec4(p, 1.0);
     gl_Position = projectionMatrix * mv;
     gl_PointSize = uSize * aSize * uPixelRatio / max(0.1, -mv.z);
@@ -34,7 +40,7 @@ const VERT = /* glsl */ `
   }
 `;
 
-const FRAG = /* glsl */ `
+const POINT_FRAG = /* glsl */ `
   uniform vec3 uColor;
   uniform float uOpacity;
   uniform float uAlpha;
@@ -47,13 +53,60 @@ const FRAG = /* glsl */ `
   }
 `;
 
+// Shared by the X-ray and fantasy fills: brightness from the fresnel term (surfaces seen
+// edge-on glow, surfaces facing you are almost clear), like a real radiograph of a shell.
+const SHELL_VERT = /* glsl */ `
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vW;
+  void main() {
+    vec4 world = modelMatrix * vec4(position, 1.0);
+    vec4 mv = viewMatrix * world;
+    vN = normalize(normalMatrix * normal);
+    vV = normalize(-mv.xyz);
+    vW = world.xyz;
+    gl_Position = projectionMatrix * mv;
+  }
+`;
+
+const SHELL_FRAG = /* glsl */ `
+  uniform vec3 uColor;
+  uniform float uOpacity;
+  uniform float uTime;
+  uniform float uHue;
+  uniform float uMode; // 0 = x-ray, 1 = fantasy
+  varying vec3 vN;
+  varying vec3 vV;
+  varying vec3 vW;
+  vec3 hsv2rgb(vec3 c) {
+    vec3 p = abs(fract(c.xxx + vec3(0.0, 2.0 / 3.0, 1.0 / 3.0)) * 6.0 - 3.0);
+    return c.z * mix(vec3(1.0), clamp(p - 1.0, 0.0, 1.0), c.y);
+  }
+  void main() {
+    float f = pow(1.0 - abs(dot(normalize(vN), normalize(vV))), 2.0);
+    vec3 col;
+    float a;
+    if (uMode < 0.5) {
+      col = mix(uColor * 0.6, vec3(0.92, 0.97, 1.0), f);
+      a = 0.035 + 0.75 * f;
+    } else {
+      float hue = fract(uHue + uTime * 0.07 + vW.y * 0.18 + vW.x * 0.07);
+      col = hsv2rgb(vec3(hue, 0.8, 1.0));
+      a = 0.05 + 0.5 * f;
+    }
+    gl_FragColor = vec4(col, a * uOpacity);
+  }
+`;
+
 const WHITE = new THREE.Color(0xffffff);
+const XRAY = new THREE.Color(0x9fc8ff);
 const ease = (t) => t * t * (3 - 2 * t);
 const smooth = (a, b, x) => ease(Math.min(1, Math.max(0, (x - a) / (b - a))));
 const _p = new THREE.Vector3();
+const _c = new THREE.Color();
 
 export class HoloModel {
-  constructor(def, { pixelRatio = 1 } = {}) {
+  constructor(def, { pixelRatio = 1, style = 'hologram', tint = null } = {}) {
     this.def = def;
     this.root = new THREE.Group(); // rotated / scaled by the controller
     this.content = new THREE.Group(); // normalizes the model's own units and centre
@@ -65,17 +118,22 @@ export class HoloModel {
       uSize: { value: CONFIG.hologram.POINT_SIZE },
       uJitter: { value: 0 },
       uAlpha: { value: CONFIG.hologram.POINT_ALPHA },
+      uDrift: { value: 0 },
     };
     this.form = 0;
     this.formTarget = 1;
     this.explode = 0;
+    this.time = 0;
     this.hovered = null;
     this.selected = null;
     this.pulled = null;
     this.parts = [];
     this.pickables = [];
     this.particleCount = 0;
+    this.tint = null;
     this._build();
+    this.setTint(tint);
+    this.setStyle(style);
   }
 
   _build() {
@@ -93,7 +151,9 @@ export class HoloModel {
     this.radius = radius;
     const scale = H.TARGET_RADIUS / radius;
     this.content.scale.setScalar(scale);
-    this.content.position.copy(center).multiplyScalar(-scale);
+    // Optional built-in viewing tilt (e.g. the flat Solar System), applied around the centre.
+    if (this.def.tilt) this.content.rotation.set(this.def.tilt, 0, 0);
+    this.content.position.copy(center).applyQuaternion(this.content.quaternion).multiplyScalar(-scale);
     this.uniforms.uJitter.value = radius * 0.003;
 
     // Particle budget is split by surface area so density looks even across parts.
@@ -108,7 +168,7 @@ export class HoloModel {
     for (const r of raw) {
       let part = byDef.get(r.def);
       if (!part) {
-        part = this._makePart(r.def);
+        part = this._makePart(r.def, this.parts.length);
         byDef.set(r.def, part);
         this.parts.push(part);
       }
@@ -137,34 +197,64 @@ export class HoloModel {
       const offset =
         len > 1e-4 ? dir.multiplyScalar(((len * H.EXPLODE_GAIN + radius * H.EXPLODE_BASE) * spread) / len) : new THREE.Vector3();
       if (r.def.ex) offset.add(new THREE.Vector3(...r.def.ex).multiplyScalar(radius * 0.5));
-      part.instances.push({ group, base: c, offset });
+      part.instances.push({ group, base: c, offset, fill, lines, points });
     }
   }
 
-  _makePart(def) {
+  _makePart(def, index) {
     const color = new THREE.Color(def.color);
-    const common = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+    const additive = { transparent: true, depthWrite: false, blending: THREE.AdditiveBlending };
+    const shell = (mode) =>
+      new THREE.ShaderMaterial({
+        ...additive,
+        side: THREE.DoubleSide,
+        uniforms: {
+          uColor: { value: color.clone() },
+          uOpacity: { value: 1 },
+          uTime: this.uniforms.uTime,
+          uHue: { value: (index * 0.13) % 1 },
+          uMode: { value: mode },
+        },
+        vertexShader: SHELL_VERT,
+        fragmentShader: SHELL_FRAG,
+      });
+    const fills = {
+      hologram: new THREE.MeshBasicMaterial({ ...additive, color: color.clone(), opacity: 0.05, side: THREE.DoubleSide }),
+      xray: shell(0),
+      realistic: new THREE.MeshStandardMaterial({
+        color: color.clone(),
+        metalness: def.metal ?? 0.35,
+        roughness: def.rough ?? 0.45,
+        side: THREE.DoubleSide,
+        transparent: true,
+      }),
+      fantasy: shell(1),
+    };
     const mats = {
-      fill: new THREE.MeshBasicMaterial({ ...common, color: color.clone(), opacity: 0.05, side: THREE.DoubleSide }),
-      lines: new THREE.LineBasicMaterial({ ...common, color: color.clone(), opacity: 0.8 }),
+      fills,
+      fill: fills.hologram,
+      lines: new THREE.LineBasicMaterial({ ...additive, color: color.clone(), opacity: 0.8 }),
       points: new THREE.ShaderMaterial({
-        ...common,
+        ...additive,
         uniforms: { ...this.uniforms, uColor: { value: color.clone() }, uOpacity: { value: 1 } },
-        vertexShader: VERT,
-        fragmentShader: FRAG,
+        vertexShader: POINT_VERT,
+        fragmentShader: POINT_FRAG,
       }),
     };
     return {
       def,
+      index,
       modelId: this.def.id,
       name: def.name,
       info: def.info,
-      color,
+      color, // the part's own colour
+      drawColor: color.clone(), // colour actually used (tinted in hacker theme)
       mats,
       instances: [],
       emph: 0.72,
       pull: new THREE.Vector3(),
       pullTarget: new THREE.Vector3(),
+      spinAxis: def.spin ? new THREE.Vector3(...def.spin.axis).normalize() : null,
     };
   }
 
@@ -197,6 +287,26 @@ export class HoloModel {
     points.frustumCulled = false; // scattered particles live outside the surface bounds
     points.raycast = () => {};
     return points;
+  }
+
+  // ---------------------------------------------------------------- appearance
+  setStyle(style) {
+    this.style = STYLES.includes(style) ? style : 'hologram';
+    for (const part of this.parts) {
+      part.mats.fill = part.mats.fills[this.style];
+      for (const inst of part.instances) inst.fill.material = part.mats.fill;
+    }
+    this.uniforms.uDrift.value = this.style === 'fantasy' ? 2.5 : 0;
+    this.uniforms.uSize.value = CONFIG.hologram.POINT_SIZE * (this.style === 'fantasy' ? 1.5 : 1);
+  }
+
+  /** Hacker theme: every part drawn in shades of one colour (null = own colours). */
+  setTint(tint) {
+    this.tint = tint ? new THREE.Color(tint) : null;
+    for (const part of this.parts) {
+      if (!this.tint) part.drawColor.copy(part.color);
+      else part.drawColor.copy(this.tint).multiplyScalar(0.55 + 0.45 * ((part.index * 0.37) % 1));
+    }
   }
 
   // ---------------------------------------------------------------- state
@@ -241,27 +351,64 @@ export class HoloModel {
     const rate = this.formTarget > this.form ? 1 / H.FORM_SECONDS : 1 / H.DISSOLVE_SECONDS;
     const step = rate * dt;
     this.form = this.formTarget > this.form ? Math.min(this.formTarget, this.form + step) : Math.max(this.formTarget, this.form - step);
+    this.time += dt;
     this.uniforms.uForm.value = this.form;
-    this.uniforms.uTime.value += dt;
+    this.uniforms.uTime.value = this.time;
 
-    // Lines and fill only appear once most particles have arrived.
+    // Solid surfaces and edges appear once most particles have arrived.
     const solid = smooth(0.55, 1, this.form);
+    const style = this.style;
+    // Particles carry the form/dissolve animation in every style; in the solid styles they
+    // fade out once the model is complete.
+    const pointVis = style === 'hologram' || style === 'fantasy' ? 1 : 1 - solid;
     const focus = this.pulled || this.selected;
     const e = ease(this.explode);
+
     for (const part of this.parts) {
       const hot = part === this.hovered || part === focus;
       const target = hot ? 1 : focus ? 0.25 : 0.72;
       part.emph = damp(part.emph, target, 8, dt);
-      part.mats.lines.opacity = part.emph * solid;
-      part.mats.lines.color.copy(part.color).lerp(WHITE, hot ? 0.45 : 0);
-      part.mats.fill.opacity = (hot ? 0.16 : 0.04) * solid * Math.min(1, part.emph / 0.72);
-      part.mats.points.uniforms.uOpacity.value = part.emph;
+      const dim = Math.min(1, part.emph / 0.72);
+      const m = part.mats;
+
+      // Colour: own (or tinted) colour; fantasy cycles hue over time.
+      if (style === 'fantasy' && !this.tint) _c.setHSL((part.index * 0.13 + this.time * 0.07) % 1, 0.85, 0.6);
+      else _c.copy(part.drawColor);
+
+      m.points.uniforms.uColor.value.copy(_c);
+      m.points.uniforms.uOpacity.value = part.emph * pointVis;
+
+      if (style === 'hologram') {
+        m.lines.opacity = part.emph * solid;
+        m.lines.color.copy(_c).lerp(WHITE, hot ? 0.45 : 0);
+        m.fill.color.copy(_c);
+        m.fill.opacity = (hot ? 0.16 : 0.04) * solid * dim;
+      } else if (style === 'xray') {
+        m.lines.opacity = 0.22 * part.emph * solid;
+        m.lines.color.copy(hot ? _c : XRAY);
+        m.fill.uniforms.uColor.value.copy(hot ? _c : this.tint ? _c : XRAY);
+        m.fill.uniforms.uOpacity.value = (hot ? 1.6 : 1) * solid * dim;
+      } else if (style === 'realistic') {
+        m.lines.opacity = 0;
+        m.fill.color.copy(_c);
+        m.fill.emissive.copy(_c).multiplyScalar(hot ? 0.45 : 0);
+        m.fill.opacity = solid * (focus && !hot ? 0.3 : 1);
+        m.fill.depthWrite = m.fill.opacity > 0.95;
+      } else {
+        m.lines.opacity = 0.9 * part.emph * solid;
+        m.lines.color.copy(_c).lerp(WHITE, hot ? 0.5 : 0.1);
+        m.fill.uniforms.uOpacity.value = (hot ? 1.5 : 1) * solid * dim;
+      }
 
       part.pull.x = damp(part.pull.x, part.pullTarget.x, CONFIG.smoothing.PULL, dt);
       part.pull.y = damp(part.pull.y, part.pullTarget.y, CONFIG.smoothing.PULL, dt);
       part.pull.z = damp(part.pull.z, part.pullTarget.z, CONFIG.smoothing.PULL, dt);
       for (const inst of part.instances) {
+        inst.lines.visible = m.lines.opacity > 0.001;
+        inst.points.visible = m.points.uniforms.uOpacity.value > 0.001;
         inst.group.position.copy(inst.base).addScaledVector(inst.offset, e).add(part.pull);
+        // Spinning parts (electrons, rotors) turn around their own centre.
+        if (part.spinAxis) inst.group.quaternion.setFromAxisAngle(part.spinAxis, this.time * part.def.spin.speed);
       }
     }
   }
@@ -271,11 +418,14 @@ export class HoloModel {
     const mats = new Set();
     this.root.traverse((o) => {
       if (o.geometry) geos.add(o.geometry);
-      if (o.material) mats.add(o.material);
     });
+    for (const part of this.parts) {
+      Object.values(part.mats.fills).forEach((m) => mats.add(m));
+      mats.add(part.mats.lines);
+      mats.add(part.mats.points);
+    }
     geos.forEach((g) => g.dispose());
     mats.forEach((m) => m.dispose());
     this.root.removeFromParent();
   }
 }
-

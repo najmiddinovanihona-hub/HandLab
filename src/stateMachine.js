@@ -45,10 +45,12 @@ export class InteractionStateMachine {
     this.zoomStart = null;
     this.lastPointer = null;
     this.lastPinch = null;
+    this.lastPalm = null;
   }
 
   _enter(mode, out) {
     if (mode === this.mode) return;
+    this.lastPalm = null;
     if (this.mode === MODES.PINCHING) out.events.push({ type: 'pinchEnd' });
     if (mode === MODES.PINCHING) out.events.push({ type: 'pinchStart' });
     out.events.push({ type: 'mode', from: this.mode, to: mode });
@@ -68,6 +70,7 @@ export class InteractionStateMachine {
       openness: null,
       explodeTarget: null, // 0..1, only while MOVING
       yawVelocity: 0, // rad/s from twisting the hand
+      yawDelta: 0, // rad from moving the open hand sideways
       pitchTarget: null, // rad from hand height
       zoom: null, // { start, ratio }
       pointer: null, // index tip, screen units (mirrored video coords)
@@ -158,7 +161,14 @@ export class InteractionStateMachine {
           if (this.mode === MODES.PINCHING) out.pinch = this.lastPinch;
           break;
         }
+        const enteringMove = this.mode !== MODES.MOVING;
         this._enter(MODES.MOVING, out);
+        const palm = hand.keypoints.palm;
+        if (!enteringMove && this.lastPalm) {
+          const dx = clamp(palm.x - this.lastPalm.x, -C.MOVE_MAX_STEP, C.MOVE_MAX_STEP);
+          out.yawDelta = dx * C.MOVE_YAW_GAIN;
+        }
+        this.lastPalm = { x: palm.x, y: palm.y };
         out.explodeTarget = clamp01((hand.openness - C.OPEN_MIN) / (C.OPEN_MAX - C.OPEN_MIN));
 
         // Twist: dead zone, then speed grows linearly up to TWIST_MAX_DEG.
@@ -172,7 +182,7 @@ export class InteractionStateMachine {
         const t = clamp((y - C.TILT_Y_TOP) / (C.TILT_Y_BOTTOM - C.TILT_Y_TOP), 0, 1);
         out.pitchTarget = (0.5 - t) * 2 * C.TILT_MAX;
 
-        out.activeGesture = k > 0 ? 'twist' : 'open';
+        out.activeGesture = k > 0 || Math.abs(out.yawDelta) > 0.01 ? 'twist' : 'open';
         if (hand.gesture !== G.NONE) this.lastDefinite = now;
       }
     }

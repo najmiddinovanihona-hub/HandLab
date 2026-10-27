@@ -37,10 +37,21 @@ const STRINGS = {
     'hand.ZOOMING': '🙌 Zooming',
     'hand.PEACE': '✌️ Next model',
     'cat.GEOMETRY': 'GEOMETRY',
+    'cat.PHYSICS': 'PHYSICS',
+    'cat.CHEMISTRY': 'CHEMISTRY',
+    'sens.ultra': 'Ultra sensitive',
+    view: 'VIEW STYLE',
+    'style.hologram': 'Dotted',
+    'style.xray': 'X-ray',
+    'style.realistic': 'Realistic',
+    'style.fantasy': 'Fantasy',
+    'tb.theme': 'Hacker theme (H)',
+    'toast.hackerOn': '> hacker mode: ON',
+    'toast.hackerOff': 'Hacker mode off',
     'cat.WONDERS': 'WONDERS',
     'cat.ANATOMY': 'ANATOMY',
     'cat.BIOLOGY': 'BIOLOGY',
-    'cat.SPACE': 'SPACE',
+    'cat.SPACE': 'ASTRONOMY',
     'cat.ENGINES': 'ENGINES',
     'cat.VEHICLES': 'VEHICLES',
     'cat.MACHINES': 'MACHINES',
@@ -106,10 +117,21 @@ const STRINGS = {
     'hand.ZOOMING': '🙌 Zoom',
     'hand.PEACE': '✌️ Keyingi model',
     'cat.GEOMETRY': 'GEOMETRIYA',
+    'cat.PHYSICS': 'FIZIKA',
+    'cat.CHEMISTRY': 'KIMYO',
+    'sens.ultra': 'Juda sezgir',
+    view: 'KO‘RINISH USLUBI',
+    'style.hologram': 'Nuqtali',
+    'style.xray': 'Rentgen',
+    'style.realistic': 'Realistik',
+    'style.fantasy': 'Fantastik',
+    'tb.theme': 'Xaker uslubi (H)',
+    'toast.hackerOn': '> xaker rejimi: YOQILDI',
+    'toast.hackerOff': 'Xaker rejimi o‘chirildi',
     'cat.WONDERS': 'MO‘JIZALAR',
     'cat.ANATOMY': 'ANATOMIYA',
     'cat.BIOLOGY': 'BIOLOGIYA',
-    'cat.SPACE': 'KOSMOS',
+    'cat.SPACE': 'ASTRONOMIYA',
     'cat.ENGINES': 'DVIGATELLAR',
     'cat.VEHICLES': 'TRANSPORT',
     'cat.MACHINES': 'MASHINALAR',
@@ -180,12 +202,12 @@ export function t(key, vars) {
 
 /** Localized { name, specs, about } of a model definition. */
 export function modelText(def) {
-  const uz = lang === 'uz' ? UZ_MODELS[def.id] : null;
+  const uz = lang === 'uz' ? UZ_MODELS[def.id] ?? def.uz : null;
   return { name: uz?.name ?? def.name, specs: uz?.specs ?? def.specs, about: uz?.about ?? def.about };
 }
 
 /** Localized { name, info } of a hologram part (part.modelId + English part name as key). */
 export function partText(part) {
-  const tr = lang === 'uz' ? UZ_MODELS[part.modelId]?.parts?.[part.name] : null;
+  const tr = lang === 'uz' ? UZ_MODELS[part.modelId]?.parts?.[part.name] ?? part.def?.uz : null;
   return { name: tr?.[0] ?? part.name, info: tr?.[1] ?? part.info };
 }

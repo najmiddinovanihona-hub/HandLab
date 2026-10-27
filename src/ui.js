@@ -86,6 +86,15 @@ export class UI {
       if (b) fn(b.dataset.act, b);
     });
   }
+  onStyle(fn) {
+    $('style-buttons').addEventListener('click', (e) => {
+      const b = e.target.closest('button');
+      if (b) fn(b.dataset.style);
+    });
+  }
+  setStyle(style) {
+    document.querySelectorAll('#style-buttons button').forEach((b) => b.classList.toggle('active', b.dataset.style === style));
+  }
   setToolbarState(act, on) {
     document.querySelector(`#toolbar [data-act="${act}"]`)?.classList.toggle('on', on);
   }

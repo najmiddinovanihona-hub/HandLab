@@ -30,6 +30,7 @@ body {
 /* ------------------------------------------------ layers */
 #bg-fallback,
 #webcam,
+#matrix,
 #stage,
 #stage canvas,
 #hand-canvas,
@@ -61,8 +62,16 @@ body.hide-video #webcam {
 }
 
 #hand-canvas,
-#labels {
+#labels,
+#matrix {
   pointer-events: none;
+}
+#matrix {
+  display: none;
+  opacity: 0.5;
+}
+body.theme-hacker #matrix {
+  display: block;
 }
 
 /* ------------------------------------------------ part labels */
@@ -529,4 +538,112 @@ button.icon:hover {
   #stats {
     display: none;
   }
+}
+
+/* ------------------------------------------------ view-style segmented control */
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+}
+.segmented button {
+  padding: 6px 4px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.segmented button:hover {
+  color: var(--text);
+}
+.segmented button.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: rgba(53, 224, 255, 0.12);
+}
+#toolbar button.mono {
+  font-family: Consolas, 'Courier New', monospace;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+/* ------------------------------------------------ hacker theme */
+body.theme-hacker {
+  --panel: rgba(0, 10, 2, 0.82);
+  --panel-solid: rgba(0, 12, 3, 0.95);
+  --line: rgba(0, 255, 102, 0.28);
+  --text: #b6ffcf;
+  --muted: #3fbf6f;
+  --accent: #00ff66;
+  --gold: #00ff66;
+  --ok: #00ff66;
+  --danger: #ff3355;
+  font-family: Consolas, 'Lucida Console', 'Courier New', monospace;
+}
+body.theme-hacker #webcam {
+  filter: grayscale(1) brightness(0.45) sepia(1) hue-rotate(70deg) saturate(3);
+}
+body.theme-hacker #bg-fallback {
+  background: #000;
+}
+body.theme-hacker #panel,
+body.theme-hacker #toolbar,
+body.theme-hacker #stats,
+body.theme-hacker #cat-tabs,
+body.theme-hacker #model-chips button {
+  border-radius: 2px;
+  box-shadow: 0 0 12px rgba(0, 255, 102, 0.15), inset 0 0 18px rgba(0, 255, 102, 0.05);
+}
+body.theme-hacker #model-name {
+  text-shadow: 0 0 8px rgba(0, 255, 102, 0.8);
+}
+body.theme-hacker #model-name::before {
+  content: '> ';
+  color: var(--accent);
+}
+body.theme-hacker #model-name::after {
+  content: '_';
+  animation: blink 1s steps(1) infinite;
+}
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+body.theme-hacker .part-label,
+body.theme-hacker .part-label.hot {
+  color: #00ff66;
+  text-shadow: 0 0 6px rgba(0, 255, 102, 0.9);
+}
+body.theme-hacker #label-lines polyline,
+body.theme-hacker #label-lines circle {
+  stroke: #00ff66 !important;
+  fill: none;
+}
+body.theme-hacker #label-lines circle {
+  fill: #00ff66 !important;
+}
+body.theme-hacker .bar i,
+body.theme-hacker #model-chips button.active i {
+  background: #00ff66;
+  box-shadow: 0 0 8px #00ff66;
+}
+body.theme-hacker #brand .logo {
+  color: #00ff66;
+}
+/* CRT scanlines */
+body.theme-hacker::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgba(0, 0, 0, 0) 0 2px, rgba(0, 0, 0, 0.18) 2px 3px);
+  z-index: 50;
+}
+body.theme-hacker #part-name {
+  color: #00ff66 !important;
 }

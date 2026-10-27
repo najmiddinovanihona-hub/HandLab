@@ -19,6 +19,7 @@
     <!-- layer 0: webcam background (or a dark grid when there is no camera) -->
     <div id="bg-fallback"></div>
     <video id="webcam" autoplay muted playsinline></video>
+    <canvas id="matrix"></canvas>
 
     <!-- layer 1: hologram -->
     <div id="stage"></div>
@@ -41,12 +42,23 @@
       <label class="block">
         <span class="caption" data-i18n="sensitivity">GESTURE SENSITIVITY</span>
         <select id="sensitivity">
+          <option value="ultra" data-i18n="sens.ultra">Ultra sensitive</option>
           <option value="strict" data-i18n="sens.strict">Strict</option>
-          <option value="standard" selected data-i18n="sens.standard">Standard</option>
+          <option value="standard" data-i18n="sens.standard">Standard</option>
           <option value="forgiving" data-i18n="sens.forgiving">Forgiving</option>
         </select>
         <small data-i18n="sensitivityHint">More forgiving helps recognize less distinct hand poses</small>
       </label>
+
+      <div class="block">
+        <span class="caption" data-i18n="view">VIEW STYLE</span>
+        <div id="style-buttons" class="segmented">
+          <button data-style="hologram" data-i18n="style.hologram">Dotted</button>
+          <button data-style="xray" data-i18n="style.xray">X-ray</button>
+          <button data-style="realistic" data-i18n="style.realistic">Realistic</button>
+          <button data-style="fantasy" data-i18n="style.fantasy">Fantasy</button>
+        </div>
+      </div>
 
       <div class="block">
         <div class="kv"><span class="caption" data-i18n="openness">HAND OPENNESS</span><b id="openness-val">—</b></div>
@@ -83,6 +95,7 @@
     <div id="hud-right">
       <div id="toolbar">
         <button data-act="lang" data-i18n-title="tb.lang" class="lang">UZ</button>
+        <button data-act="theme" data-i18n-title="tb.theme" class="mono">&gt;_</button>
         <button data-act="camera" data-i18n-title="tb.camera" class="on">📷</button>
         <button data-act="labels" data-i18n-title="tb.labels" class="on">🏷️</button>
         <button data-act="snap" data-i18n-title="tb.snap">✨</button>
